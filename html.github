@@ -1,0 +1,115 @@
+1. Python Code (self-contained)
+import random, datetime
+from collections import defaultdict
+import pandas as pd
+
+# --- Categorization rules ---
+CATEGORY_KEYWORDS = {
+    "Groceries": ["supermarket","grocery","walmart","grocer","aldi","costco"],
+    "Transport": ["uber","taxi","lyft","bus","train","metro","fuel","petrol","diesel"],
+    "Dining": ["restaurant","cafe","coffee","dinner","lunch","starbucks"],
+    "Entertainment": ["netflix","spotify","movie","concert","games","playstation","xbox"],
+    "Bills": ["electric","water","internet","phone","rent","mortgage","insurance"],
+    "Shopping": ["amazon","flipkart","shopping","mall","clothes","shoe"],
+    "Health": ["pharmacy","doctor","hospital","clinic","gym"]
+}
+
+DESCRIPTIONS = [
+    "Supermarket purchase","Uber ride","Coffee at cafe",
+    "Monthly internet bill","Movie ticket","Amazon order","Pharmacy"
+]
+
+def categorize(desc: str) -> str:
+    text = desc.lower()
+    for cat, kws in CATEGORY_KEYWORDS.items():
+        if any(k in text for k in kws):
+            return cat
+    return "Uncategorized"
+
+# --- Generate mock expenses (120 months) ---
+def generate_mock_expenses(n=120):
+    random.seed(0)
+    now = datetime.date.today()
+    expenses = []
+    for i in range(n):
+        month_index = now.month - (n - 1 - i)
+        year = now.year + (month_index - 1) // 12
+        month = ((month_index - 1) % 12) + 1
+        day = random.randint(1,28)
+        d = datetime.date(year, month, day)
+        amt = round((50 + random.random()*450) * (1 + (random.random()-0.5)*0.6))
+        desc = random.choice(DESCRIPTIONS)
+        expenses.append({
+            "date": d.isoformat(),
+            "amount": amt,
+            "description": desc,
+            "category": categorize(desc)
+        })
+    return expenses
+
+# --- Group and analyze ---
+def group_by_month(expenses):
+    monthly = defaultdict(float)
+    for e in expenses:
+        monthly[e["date"][:7]] += e["amount"]
+    rows = [{"month": k, "spend": round(v)} for k,v in sorted(monthly.items())]
+    for idx, r in enumerate(rows, 1):
+        r["idx"] = idx
+    return rows
+
+def category_breakdown(expenses):
+    cat_sum = defaultdict(float)
+    for e in expenses:
+        cat_sum[e["category"]] += e["amount"]
+    return sorted(
+        [{"category":k,"value":round(v)} for k,v in cat_sum.items()],
+        key=lambda x: -x["value"]
+    )
+
+def linear_regression_predict(points, future_x):
+    if len(points) < 2: return None
+    n = len(points)
+    sum_x = sum(p['x'] for p in points)
+    sum_y = sum(p['y'] for p in points)
+    sum_xy = sum(p['x']*p['y'] for p in points)
+    sum_x2 = sum(p['x']*p['x'] for p in points)
+    denom = (n * sum_x2 - sum_x**2) or 1
+    slope = (n*sum_xy - sum_x*sum_y) / denom
+    intercept = (sum_y - slope*sum_x) / n
+    return slope*future_x + intercept
+
+# --- Run analysis ---
+expenses = generate_mock_expenses()
+monthly_series = group_by_month(expenses)
+categories = category_breakdown(expenses)
+
+last12 = monthly_series[-12:]
+points = [{"x":i+1,"y":p["spend"]} for i,p in enumerate(last12)]
+forecast = round(linear_regression_predict(points, len(points)+1))
+
+latest_month = monthly_series[-1]
+top_category = categories[0]
+
+budget = 2000
+alerts = []
+if forecast > budget:
+    alerts.append(f"Forecasted spend ₹{forecast} > budget ₹{budget}")
+if latest_month["spend"] > budget:
+    alerts.append(f"Latest month ({latest_month['month']}) spend ₹{latest_month['spend']} > budget ₹{budget}")
+
+# --- Output ---
+print("=== KEY ANALYTICS ===")
+print(f"Latest month: {latest_month['month']} | Spend: ₹{latest_month['spend']}")
+print(f"Forecast (next month): ₹{forecast}")
+print(f"Top category: {top_category['category']} | Amount: ₹{top_category['value']}")
+print("\nAlerts:")
+print(alerts if alerts else "No alerts — all good.")
+
+print("\n--- Last 5 Months ---")
+print(pd.DataFrame(monthly_series[-5:]))
+
+print("\n--- Top 5 Categories ---")
+print(pd.DataFrame(categories[:5]))
+
+print("\n--- Recent 5 Transactions ---")
+print(pd.DataFrame(sorted(expenses, key=lambda x:x['date'], reverse=True)[:5]))
